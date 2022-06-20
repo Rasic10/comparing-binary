@@ -13,6 +13,8 @@ namespace comparing_binary.Controllers
         private static string right = "";
 
         [HttpGet("diff/1")]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult Get()
         {
             if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
@@ -24,14 +26,18 @@ namespace comparing_binary.Controllers
             if (string.Equals(left, right))
                 return Ok(new Response() { diffResultType = ResultType.Equals.ToString() });
 
-            return Ok(new string[] { left, right });
+            var response = calculateDiffs(left, right);
+
+            return Ok(response);
         }
 
         [HttpPut("diff/1/left")]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status201Created)]
         public StatusCodeResult PutLeft(string data)
         {
             if (string.IsNullOrEmpty(data))
-                return BadRequest();
+                return StatusCode(400);
 
             var bin = EncodeToBinary(data);
             if (bin == null)
@@ -43,6 +49,8 @@ namespace comparing_binary.Controllers
         }
 
         [HttpPut("diff/1/right")]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status201Created)]
         public IActionResult PutRight(string data)
         {
             if (string.IsNullOrEmpty(data))
@@ -54,7 +62,7 @@ namespace comparing_binary.Controllers
 
             right = bin;
 
-            return Created("DONE", null);
+            return StatusCode(201);
         }
 
         private string? EncodeToBinary(string data)
@@ -82,6 +90,43 @@ namespace comparing_binary.Controllers
 
             return stringBuilder.ToString();
         }
+
+        private Response calculateDiffs(string left, string right)
+        {
+            var diffs = new List<Diff>();
+
+            var diff = new Diff();
+
+            for (int i = 0; i < left.Length; i++)
+            {
+                if (left[i] != right[i])
+                {
+                    if (diff.Offset == null)
+                        diff.Offset = i;
+
+                    if (diff.Length == null)
+                        diff.Length = 1;
+                    else
+                        diff.Length++;
+                }
+                else
+                {
+                    if (diff.Offset != null && diff.Length != null)
+                    {
+                        diffs.Add(diff);
+
+                        diff = new Diff();
+                    }
+                }
+            }
+
+            if (diff.Offset != null && diff.Length != null)
+            {
+                diffs.Add(diff);
+            }
+
+            return new Response() { diffResultType = ResultType.ContentDoNotMatch.ToString(), diffs = diffs };
+        }
     }
 
     public class Response
@@ -92,8 +137,14 @@ namespace comparing_binary.Controllers
 
     public class Diff
     {
-        public int Offset { get; set; }
-        public int Length { get; set; }
+        public int? Offset { get; set; }
+        public int? Length { get; set; }
+
+        public Diff()
+        {
+            Offset = null;
+            Length = null;
+        }
     }
 
     public enum ResultType
